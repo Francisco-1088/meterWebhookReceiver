@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webhook Receiver — Meter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            meter: {
+              50:  '#EEF2FF',
+              100: '#E0E7FF',
+              200: '#C7D4FD',
+              400: '#7B93F5',
+              500: '#4461D7',
+              600: '#3B55CC',
+              700: '#3049BF',
+              800: '#243aaa',
+              900: '#1a2d80',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://unpkg.com/adaptivecards@2.11.2/dist/adaptivecards.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    * { font-family: 'Inter', system-ui, sans-serif; }
+
+    /* JSON syntax — dark bg */
+    .j-key  { color: #ff7b72; }
+    .j-str  { color: #a5d6ff; }
+    .j-num  { color: #79c0ff; }
+    .j-bool { color: #ffa657; }
+    .j-null { color: #d2a8ff; }
+
+    /* AdaptiveCards reset */
+    #card-render * { box-sizing: border-box; font-family: 'Inter', 'Segoe UI', sans-serif; }
+    #card-render table { border-collapse: collapse; }
+    #card-render button { cursor: pointer; border-radius: 4px; padding: 6px 16px; font-size: 13px; font-weight: 600; border: none; }
+    #card-render .ac-container { overflow: hidden; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #3F3F46; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52525B; }
+
+    /* Textarea monospace */
+    textarea.mono { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace; }
+
+    /* Meter topnav link style */
+    .nav-item {
+      font-size: 13px;
+      font-weight: 500;
+      color: #71717A;
+      padding: 2px 0;
+      border-bottom: 1.5px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .nav-item:hover { color: #FAFAFA; }
+    .nav-item.active { color: #FAFAFA; border-bottom-color: #4461D7; }
+
+    /* Input focus */
+    input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px #4461D730; border-color: #4461D7 !important; }
+  </style>
+</head>
+<body class="bg-[#F4F4F5] min-h-screen" x-data="app()" x-init="init()">
+
+  <!-- ── Topnav ──────────────────────────────────────────────────────────── -->
+  <nav class="h-12 bg-[#09090B] border-b border-[#27272A] flex items-center px-5 gap-5 sticky top-0 z-40 select-none">
+
+    <!-- Wordmark -->
+    <a href="#" class="flex items-center gap-2 flex-shrink-0 mr-2">
+      <!-- Meter M-mark -->
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="18" height="18" rx="3.5" fill="white"/>
+        <path d="M3.25 13.5V4.5L9 11L14.75 4.5V13.5" stroke="#09090B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="text-white font-semibold text-[13px] tracking-[-0.01em]">Meter</span>
+    </a>
+
+    <!-- Separator -->
+    <span class="text-[#3F3F46] text-lg font-light">/</span>
+
+    <!-- App name -->
+    <span class="text-[#A1A1AA] text-[13px] font-medium">Webhook Receiver</span>
+
+    <div class="flex-1"></div>
+
+    <!-- Teams status pill -->
+    <div class="flex items-center gap-1.5 text-[12px]">
+      <span class="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+            :class="destinations.length > 0 ? 'bg-emerald-500' : 'bg-[#3F3F46]'"></span>
+      <span class="text-[#71717A]"
+            x-text="destinations.length === 0
+              ? 'No Teams destinations'
+              : destinations.length === 1
+                ? '1 Teams destination'
+                : destinations.length + ' Teams destinations'"></span>
+    </div>
+
+    <!-- Configure button -->
+    <button @click="showConfigModal = true"
+            class="flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-md bg-[#18181B] text-[#A1A1AA] hover:text-white hover:bg-[#27272A] transition-colors border border-[#27272A] hover:border-[#3F3F46]">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M8 5.5A2.5 2.5 0 1 0 8 10.5A2.5 2.5 0 0 0 8 5.5ZM6 8A2 2 0 1 1 10 8A2 2 0 0 1 6 8Z"/>
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M8 1C8.34 1 8.62 1.25 8.65 1.59L8.79 3.02C9.34 3.18 9.86 3.43 10.32 3.76L11.6 3.05C11.9 2.89 12.27 2.98 12.46 3.26L13.74 5.26C13.93 5.54 13.87 5.91 13.61 6.12L12.43 7.07C12.48 7.37 12.5 7.68 12.5 8C12.5 8.32 12.48 8.63 12.43 8.93L13.61 9.88C13.87 10.09 13.93 10.46 13.74 10.74L12.46 12.74C12.27 13.02 11.9 13.11 11.6 12.95L10.32 12.24C9.86 12.57 9.34 12.82 8.79 12.98L8.65 14.41C8.62 14.75 8.34 15 8 15C7.66 15 7.38 14.75 7.35 14.41L7.21 12.98C6.66 12.82 6.14 12.57 5.68 12.24L4.4 12.95C4.1 13.11 3.73 13.02 3.54 12.74L2.26 10.74C2.07 10.46 2.13 10.09 2.39 9.88L3.57 8.93C3.52 8.63 3.5 8.32 3.5 8C3.5 7.68 3.52 7.37 3.57 7.07L2.39 6.12C2.13 5.91 2.07 5.54 2.26 5.26L3.54 3.26C3.73 2.98 4.1 2.89 4.4 3.05L5.68 3.76C6.14 3.43 6.66 3.18 7.21 3.02L7.35 1.59C7.38 1.25 7.66 1 8 1Z"/>
+      </svg>
+      Configure
+    </button>
+  </nav>
+
+  <!-- ── Main layout: sidebar + content ─────────────────────────────────── -->
+  <div class="flex min-h-[calc(100vh-3rem)]">
+
+    <!-- ── Left panel (test form) ──────────────────────────────────────── -->
+    <aside class="w-[360px] flex-shrink-0 bg-[#09090B] border-r border-[#27272A] flex flex-col">
+
+      <!-- Panel header -->
+      <div class="px-5 pt-5 pb-4 border-b border-[#27272A]">
+        <p class="text-[10px] font-semibold text-[#52525B] uppercase tracking-widest mb-0.5">Testing</p>
+        <h2 class="text-sm font-semibold text-[#FAFAFA]">Send Test Event</h2>
+      </div>
+
+      <!-- Form body -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+
+        <!-- Alert Type -->
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-semibold text-[#71717A] uppercase tracking-wide">Alert Type</label>
+          <select x-model="alertType" @change="onAlertTypeChange()"
+                  class="w-full text-[13px] border border-[#27272A] rounded-md px-3 py-2 bg-[#18181B] text-[#FAFAFA] transition-colors cursor-pointer">
+            <optgroup label="Device Events">
+              <option>Device boot</option>
+              <option>Device offline</option>
+              <option>High CPU usage</option>
+              <option>Config flaps</option>
+              <option>Firmware upgrade scheduled</option>
+            </optgroup>
+            <optgroup label="WAN Events">
+              <option>WAN down</option>
+              <option>WAN up</option>
+              <option>WAN failover</option>
+              <option>WAN flap</option>
+              <option>ISP outage</option>
+              <option>ISP degradation</option>
+              <option>High availability failover</option>
+            </optgroup>
+            <optgroup label="Access Point Events">
+              <option>Access point client count</option>
+              <option>Access point link speed</option>
+              <option>Access point radar hit</option>
+              <option>Rogue access point</option>
+              <option>Honeypot access point</option>
+            </optgroup>
+            <optgroup label="Network Events">
+              <option>DHCP pool exhaustion</option>
+              <option>IP conflict</option>
+              <option>Wireless DHCP failure</option>
+              <option>RADIUS profile unreachable</option>
+              <option>Captive portal access</option>
+            </optgroup>
+            <optgroup label="Switch Events">
+              <option>Port blocked</option>
+              <option>STP error</option>
+            </optgroup>
+            <optgroup label="Audit Events">
+              <option>Audit log</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <!-- Network Name -->
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-semibold text-[#71717A] uppercase tracking-wide">Network</label>
+          <input x-model="networkName" type="text" placeholder="e.g. HQ Office"
+                 class="w-full text-[13px] border border-[#27272A] rounded-md px-3 py-2 bg-[#18181B] text-[#FAFAFA] transition-colors placeholder:text-[#52525B]">
+        </div>
+
+        <!-- Timestamp -->
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-semibold text-[#71717A] uppercase tracking-wide">Timestamp</label>
+          <input x-model="timestamp" type="text"
+                 class="w-full text-[12px] font-mono border border-[#27272A] rounded-md px-3 py-2 bg-[#18181B] text-[#A1A1AA] transition-colors">
+        </div>
+
+        <!-- Event Data JSON -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="block text-[11px] font-semibold text-[#71717A] uppercase tracking-wide">Event Data</label>
+            <span class="text-[10px] text-[#52525B]">JSON</span>
+          </div>
+          <textarea x-model="extraDataStr" rows="9" spellcheck="false"
+                    @input="validateJSON()"
+                    class="mono w-full text-[11px] border rounded-md px-3 py-2 text-[#A1A1AA] resize-y leading-relaxed transition-colors bg-[#0D0D0F]"
+                    :class="jsonValid ? 'border-[#27272A]' : 'border-red-500 bg-red-950/20'"></textarea>
+          <p x-show="!jsonValid" class="text-[11px] text-red-400 font-medium">Invalid JSON</p>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex gap-2 pt-1">
+          <button @click="previewCard()"
+                  :disabled="previewing || !jsonValid"
+                  class="flex-1 text-[13px] font-medium py-2 px-3 rounded-md border border-[#3F3F46] text-[#A1A1AA] bg-[#18181B] hover:bg-[#27272A] hover:text-[#FAFAFA] hover:border-[#52525B] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <span x-show="!previewing">Preview</span>
+            <span x-show="previewing">Building…</span>
+          </button>
+          <button @click="sendToTeams()"
+                  :disabled="sending || !jsonValid"
+                  class="flex-1 text-[13px] font-semibold py-2 px-3 rounded-md bg-meter-500 text-white hover:bg-meter-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <span x-show="!sending">Send to Teams →</span>
+            <span x-show="sending">Sending…</span>
+          </button>
+        </div>
+
+        <!-- Last action status -->
+        <div x-show="lastStatus" x-cloak
+             class="rounded-md px-3 py-2.5 text-[12px] font-medium flex items-center gap-2"
+             :class="{
+               'bg-emerald-950/40 text-emerald-400 border border-emerald-900': lastStatus === 'delivered',
+               'bg-amber-950/40  text-amber-400  border border-amber-900':    lastStatus === 'preview' || lastStatus === 'no-teams' || lastStatus === 'partial',
+               'bg-red-950/40    text-red-400    border border-red-900':      lastStatus === 'failed',
+             }">
+          <template x-if="lastStatus === 'delivered'">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> Delivered to all destinations</span>
+          </template>
+          <template x-if="lastStatus === 'partial'">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>
+              <span x-text="'Partial delivery (' + deliveredCount + '/' + totalCount + ')'"></span>
+            </span>
+          </template>
+          <template x-if="lastStatus === 'preview'">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span> Preview only — not sent</span>
+          </template>
+          <template x-if="lastStatus === 'no-teams'">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span> No Teams destinations configured</span>
+          </template>
+          <template x-if="lastStatus === 'failed'">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span> Delivery failed</span>
+          </template>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ── Right: Results ──────────────────────────────────────────────── -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- Empty state -->
+      <template x-if="!results">
+        <div class="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-400">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+          <div class="text-center">
+            <p class="text-[13px] font-medium text-zinc-500">No preview yet</p>
+            <p class="text-[12px] text-zinc-400 mt-0.5">Select an alert and click Preview or Send to Teams</p>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="results">
+        <div class="flex-1 flex flex-col overflow-hidden">
+
+          <!-- Tab bar -->
+          <div class="bg-white border-b border-zinc-200 flex items-end px-5 gap-1 flex-shrink-0">
+            <template x-for="tab in [{id:'preview',label:'Card Preview'},{id:'original',label:'Original Payload'},{id:'teams',label:'Teams Payload'}]" :key="tab.id">
+              <button @click="switchTab(tab.id)"
+                      class="relative text-[13px] font-medium px-3 py-3 transition-colors"
+                      :class="activeTab === tab.id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'">
+                <span x-text="tab.label"></span>
+                <span x-show="activeTab === tab.id"
+                      class="absolute bottom-0 left-0 right-0 h-[2px] bg-meter-500 rounded-t"></span>
+              </button>
+            </template>
+          </div>
+
+          <!-- Tab content -->
+          <div class="flex-1 overflow-y-auto p-5">
+
+            <!-- Card Preview -->
+            <div x-show="activeTab === 'preview'">
+              <p class="text-[11px] text-zinc-400 mb-4 font-medium">
+                Rendered with the standard Adaptive Cards SDK using Teams host config. Colors faithfully match Teams appearance.
+              </p>
+              <div class="bg-white border border-zinc-200 rounded-lg overflow-hidden max-w-[520px] shadow-sm">
+                <div id="card-render" class="min-h-12"></div>
+              </div>
+            </div>
+
+            <!-- Original Payload -->
+            <div x-show="activeTab === 'original'" x-cloak>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">Meter webhook payload</span>
+                <button @click="copyJSON('original')"
+                        class="text-[11px] font-medium text-zinc-500 hover:text-meter-600 px-2 py-1 rounded border border-zinc-200 hover:border-meter-200 transition-colors">
+                  <span x-text="copied === 'original' ? '✓ Copied' : 'Copy'"></span>
+                </button>
+              </div>
+              <pre class="text-[11px] font-mono bg-[#0D1117] text-zinc-300 rounded-lg p-4 overflow-x-auto max-h-[560px] leading-relaxed"
+                   x-html="highlightJSON(results.original_payload)"></pre>
+            </div>
+
+            <!-- Teams Payload -->
+            <div x-show="activeTab === 'teams'" x-cloak>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">Adaptive Card payload → Teams incoming webhook</span>
+                <button @click="copyJSON('teams')"
+                        class="text-[11px] font-medium text-zinc-500 hover:text-meter-600 px-2 py-1 rounded border border-zinc-200 hover:border-meter-200 transition-colors">
+                  <span x-text="copied === 'teams' ? '✓ Copied' : 'Copy'"></span>
+                </button>
+              </div>
+              <pre class="text-[11px] font-mono bg-[#0D1117] text-zinc-300 rounded-lg p-4 overflow-x-auto max-h-[560px] leading-relaxed"
+                   x-html="highlightJSON(results.teams_payload)"></pre>
+            </div>
+
+          </div>
+        </div>
+      </template>
+
+    </main>
+  </div>
+
+  <!-- ── Event log ───────────────────────────────────────────────────────── -->
+  <section class="bg-white border-t border-zinc-200">
+    <!-- Log header -->
+    <div class="px-5 py-3 border-b border-zinc-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">Event Log</p>
+        <span x-show="events.length > 0"
+              class="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500"
+              x-text="events.length"></span>
+      </div>
+      <span class="text-[11px] text-zinc-400">Auto-refreshes every 5 s &middot; last 50 &middot; click row to inspect</span>
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="events.length === 0" class="px-5 py-10 text-center">
+      <p class="text-[13px] text-zinc-400">No events yet.</p>
+      <p class="text-[12px] text-zinc-400 mt-1">Send a test above, or point Meter alerts at <code class="bg-zinc-100 rounded px-1 py-0.5 text-zinc-600">POST /webhook</code>.</p>
+    </div>
+
+    <!-- Table -->
+    <div x-show="events.length > 0" class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-100">
+            <th class="text-left px-5 py-2.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-widest whitespace-nowrap w-44">Time</th>
+            <th class="text-left px-4 py-2.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">Alert</th>
+            <th class="text-left px-4 py-2.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">Network</th>
+            <th class="text-left px-4 py-2.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-widest w-24">Source</th>
+            <th class="text-left px-4 py-2.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-widest w-28">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="ev in events" :key="ev.id">
+            <tr class="border-b border-zinc-50 hover:bg-[#F9F9FB] cursor-pointer transition-colors"
+                @click="selectEvent(ev)">
+              <td class="px-5 py-3 text-[11px] font-mono text-zinc-400 whitespace-nowrap"
+                  x-text="fmtTime(ev.received_at)"></td>
+              <td class="px-4 py-3 text-[13px] font-medium text-zinc-800" x-text="ev.alert_name"></td>
+              <td class="px-4 py-3 text-[13px] text-zinc-500" x-text="ev.network_name"></td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                      :class="ev.source === 'test'
+                        ? 'bg-meter-50 text-meter-700'
+                        : 'bg-purple-50 text-purple-700'"
+                      x-text="ev.source === 'test' ? 'Test' : 'Meter'"></span>
+              </td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1.5 text-[12px] font-medium"
+                      :class="deliveryTint(ev)"
+                      :title="deliveryTooltip(ev)">
+                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        :class="deliveryDot(ev)"></span>
+                  <span x-text="deliveryLabel(ev)"></span>
+                </span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Teams Config Modal ──────────────────────────────────────────────── -->
+  <div x-show="showConfigModal" x-cloak
+       class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="showConfigModal = false"
+       @click.self="showConfigModal = false">
+
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-xl border border-zinc-200" @click.stop>
+
+      <!-- Modal header -->
+      <div class="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
+        <div>
+          <p class="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">Integration</p>
+          <h3 class="text-[15px] font-semibold text-zinc-900 mt-0.5">Teams Destinations</h3>
+        </div>
+        <button @click="showConfigModal = false"
+                class="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors text-lg">×</button>
+      </div>
+
+      <!-- Modal body -->
+      <div class="p-6 space-y-5">
+
+        <!-- Destinations list -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Configured</label>
+            <span class="text-[11px] text-zinc-400" x-text="destinations.length + ' total'"></span>
+          </div>
+
+          <template x-if="destinations.length === 0">
+            <div class="px-4 py-6 rounded-lg bg-zinc-50 border border-dashed border-zinc-200 text-center">
+              <p class="text-[12px] text-zinc-500">No destinations yet. Add one below.</p>
+            </div>
+          </template>
+
+          <template x-for="dest in destinations" :key="dest.id">
+            <div class="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-zinc-50 border border-zinc-100">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+              <div class="flex-1 min-w-0">
+                <div class="text-[13px] font-semibold text-zinc-800" x-text="dest.name"></div>
+                <div class="text-[11px] font-mono text-zinc-400 truncate" x-text="dest.masked_url"></div>
+              </div>
+              <button @click="removeDestination(dest.id)" :disabled="configSaving"
+                      class="text-[12px] font-medium text-red-500 hover:text-red-700 transition-colors disabled:opacity-40 flex-shrink-0">
+                Remove
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Add new destination form -->
+        <div class="space-y-3 pt-4 border-t border-zinc-100">
+          <label class="block text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">Add destination</label>
+
+          <div class="space-y-1.5">
+            <label class="block text-[11px] font-medium text-zinc-500">Name</label>
+            <input x-model="newDestName" type="text"
+                   placeholder="e.g. Ops Channel"
+                   class="w-full text-[13px] border border-zinc-200 rounded-md px-3 py-2 text-zinc-900 placeholder:text-zinc-400 transition-colors">
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="block text-[11px] font-medium text-zinc-500">Webhook URL</label>
+            <input x-model="newDestUrl" type="url"
+                   @keydown.enter="addDestination()"
+                   placeholder="https://your-org.webhook.office.com/webhookb2/…"
+                   class="w-full text-[12px] font-mono border border-zinc-200 rounded-md px-3 py-2.5 text-zinc-900 placeholder:font-sans placeholder:text-zinc-400 transition-colors">
+            <p class="text-[11px] text-zinc-400 leading-relaxed">
+              Paste an MS Teams Incoming Webhook URL or Power Automate HTTP trigger URL.
+              Saved to <code class="bg-zinc-100 px-1 rounded text-zinc-500">.env</code> on add.
+            </p>
+          </div>
+
+          <button @click="addDestination()" :disabled="!newDestUrl.trim() || configSaving"
+                  class="w-full text-[13px] font-semibold py-2 px-3 rounded-md bg-meter-500 text-white hover:bg-meter-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <span x-text="configSaving ? 'Adding…' : '+ Add destination'"></span>
+          </button>
+        </div>
+
+        <!-- Error -->
+        <p x-show="configError" x-cloak class="text-[12px] text-red-500 font-medium" x-text="configError"></p>
+
+      </div>
+
+      <!-- Modal footer -->
+      <div class="px-6 py-4 border-t border-zinc-100 flex items-center justify-end">
+        <button @click="showConfigModal = false"
+                class="text-[13px] font-medium px-4 py-2 rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-50 transition-colors">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Alpine.js app (logic unchanged) ────────────────────────────────── -->
+  <script>
+  const EXAMPLE_DATA = {
+    "Device boot":                { serial_number: "SN-001234", device_name: "Core Router", model: "MX-250" },
+    "Device offline":             { serial_number: "SN-001234", device_name: "Core Router", model: "MX-250", ip_address: "10.0.0.1" },
+    "High CPU usage":             { serial_number: "SN-001234", device_name: "Core Router", cpu_usage: "94%", cpu_threshold: "80%" },
+    "Config flaps":               { serial_number: "SN-001234", device_name: "Core Router" },
+    "Firmware upgrade scheduled": { serial_number: "SN-001234", device_name: "Core Router", model: "MX-250" },
+    "WAN down":                   { wan_name: "Comcast Fiber", isp_name: "Comcast", ip_address: "203.0.113.1" },
+    "WAN up":                     { wan_name: "Comcast Fiber", isp_name: "Comcast", ip_address: "203.0.113.1" },
+    "WAN failover":               { wan_name: "Comcast Fiber", failover_wan: "AT&T LTE Backup" },
+    "WAN flap":                   { wan_name: "Comcast Fiber", isp_name: "Comcast" },
+    "ISP outage":                 { isp_name: "Comcast", wan_name: "Comcast Fiber" },
+    "ISP degradation":            { isp_name: "Comcast", wan_name: "Comcast Fiber" },
+    "High availability failover": { primary_wan: "Comcast Fiber", failover_wan: "AT&T LTE Backup" },
+    "Access point client count":  { ap_name: "AP-Floor-2", ssid: "Corp-WiFi", client_count: 45, client_threshold: 40 },
+    "Access point link speed":    { ap_name: "AP-Floor-2", link_speed: "100 Mbps", ssid: "Corp-WiFi" },
+    "Access point radar hit":     { ap_name: "AP-Roof", channel: "116", frequency_band: "5 GHz" },
+    "Rogue access point":         { rogue_ssid: "FreeWifi", rogue_bssid: "AA:BB:CC:DD:EE:FF" },
+    "Honeypot access point":      { honeypot_ssid: "Corp-WiFi-Free" },
+    "DHCP pool exhaustion":       { vlan: "VLAN 10", pool_size: 254, leases_used: 248, utilization: "97%" },
+    "IP conflict":                { conflict_ip: "192.168.1.100", client_mac: "AA:BB:CC:DD:EE:01" },
+    "Wireless DHCP failure":      { ssid: "Corp-WiFi", ap_name: "AP-Floor-1", client_mac: "AA:BB:CC:DD:EE:02" },
+    "RADIUS profile unreachable": { radius_server: "10.0.1.50", profile_name: "Corp-Auth" },
+    "Captive portal access":      { portal_name: "Guest Portal", client_mac: "AA:BB:CC:DD:EE:03", client_username: "guest@example.com" },
+    "Port blocked":               { port_name: "Port 12", port_number: 12, switch_name: "Core Switch", blocked_reason: "BPDU Guard" },
+    "STP error":                  { switch_name: "Core Switch", switch_serial: "SW-001234", stp_state: "Loop detected" },
+    "Audit log":                  { user_email: "admin@company.com", action: "Updated VLAN configuration", resource: "VLAN 10", resource_type: "Network" },
+  };
+
+  // fontTypes omitted — unsupported in AdaptiveCards 2.x
+  const TEAMS_HOST_CONFIG = {
+    fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    fontSizes:   { small: 12, default: 14, medium: 14, large: 18, extraLarge: 26 },
+    fontWeights: { lighter: 200, default: 400, bolder: 700 },
+    spacing: { small: 3, default: 8, medium: 20, large: 30, extraLarge: 40, padding: 12 },
+    separator: { lineThickness: 1, lineColor: "#E8E8E8" },
+    supportsInteractivity: true,
+    containerStyles: {
+      default: {
+        backgroundColor: "#FFFFFF",
+        foregroundColors: {
+          default:   { default: "#252423", subtle: "#605E5C" },
+          accent:    { default: "#6264A7", subtle: "#8B8CC7" },
+          attention: { default: "#A80000", subtle: "#D13438" },
+          good:      { default: "#107C10", subtle: "#13A10E" },
+          warning:   { default: "#7F6200", subtle: "#966400" },
+          light:     { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+        },
+      },
+      emphasis: {
+        backgroundColor: "#F3F2F1",
+        foregroundColors: {
+          default: { default: "#252423", subtle: "#605E5C" },
+          light:   { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+        },
+      },
+      attention: {
+        backgroundColor: "#C4314B",
+        foregroundColors: {
+          default: { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+          light:   { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+        },
+      },
+      good: {
+        backgroundColor: "#107C10",
+        foregroundColors: {
+          default: { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+          light:   { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+        },
+      },
+      warning: {
+        backgroundColor: "#E97548",
+        foregroundColors: {
+          default: { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+          light:   { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+        },
+      },
+      accent: {
+        backgroundColor: "#6264A7",
+        foregroundColors: {
+          default: { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+          light:   { default: "#FFFFFF", subtle: "#FFFFFFCC" },
+        },
+      },
+    },
+    imageSizes: { small: 40, medium: 80, large: 160 },
+    actions: {
+      maxActions: 5,
+      spacing: "Default",
+      buttonSpacing: 8,
+      showCard: { actionMode: "Inline", inlineTopMargin: 8 },
+      actionsOrientation: "Horizontal",
+      actionAlignment: "Stretch",
+    },
+  };
+
+  function app() {
+    return {
+      alertType:    "WAN down",
+      networkName:  "HQ Office",
+      timestamp:    "",
+      extraDataStr: "{}",
+      jsonValid:    true,
+      sending:      false,
+      previewing:   false,
+      lastStatus:   null,
+      deliveredCount: 0,
+      totalCount:     0,
+      copied:       null,
+      results:      null,
+      activeTab:    "preview",
+      events:       [],
+      destinations:    [],
+      showConfigModal: false,
+      newDestName:     "",
+      newDestUrl:      "",
+      configSaving:    false,
+      configError:     null,
+
+      init() {
+        this.timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+        this.onAlertTypeChange();
+        this.loadConfig();
+        this.loadEvents();
+        setInterval(() => this.loadEvents(), 5000);
+      },
+
+      onAlertTypeChange() {
+        const ex = EXAMPLE_DATA[this.alertType] || {};
+        this.extraDataStr = JSON.stringify(ex, null, 2);
+        this.jsonValid = true;
+      },
+
+      validateJSON() {
+        try { JSON.parse(this.extraDataStr); this.jsonValid = true; }
+        catch (_) { this.jsonValid = false; }
+      },
+
+      buildPayload() {
+        let data = {};
+        try { data = JSON.parse(this.extraDataStr); } catch (_) {}
+        return {
+          metadata: { alert_name: this.alertType, network_name: this.networkName, timestamp: this.timestamp },
+          data,
+        };
+      },
+
+      async previewCard() {
+        this.previewing = true;
+        try {
+          const res  = await fetch("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(this.buildPayload()) });
+          const data = await res.json();
+          this.results    = data;
+          this.lastStatus = "preview";
+          this.activeTab  = "preview";
+          await this.$nextTick();
+          this.renderCard();
+        } catch (e) { console.error(e); }
+        finally { this.previewing = false; }
+      },
+
+      async sendToTeams() {
+        this.sending = true;
+        try {
+          const res  = await fetch("/api/send-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(this.buildPayload()) });
+          const data = await res.json();
+          this.results   = data;
+          this.activeTab = "preview";
+
+          const total     = data.destination_count || 0;
+          const delivered = (data.delivery_results || []).filter(r => r.delivered).length;
+          this.totalCount     = total;
+          this.deliveredCount = delivered;
+
+          if (total === 0)             this.lastStatus = "no-teams";
+          else if (delivered === total) this.lastStatus = "delivered";
+          else if (delivered === 0)     this.lastStatus = "failed";
+          else                          this.lastStatus = "partial";
+
+          await this.$nextTick();
+          this.renderCard();
+          this.loadEvents();
+        } catch (e) { console.error(e); }
+        finally { this.sending = false; }
+      },
+
+      switchTab(tab) {
+        this.activeTab = tab;
+        if (tab === "preview") this.$nextTick(() => this.renderCard());
+      },
+
+      renderCard() {
+        const el = document.getElementById("card-render");
+        if (!el || !this.results?.teams_payload) return;
+        const content = this.results.teams_payload?.attachments?.[0]?.content;
+        if (!content) { el.innerHTML = '<p style="padding:12px;color:#71717A;font-size:13px">No card content</p>'; return; }
+        el.innerHTML = "";
+        try {
+          const ac = new AdaptiveCards.AdaptiveCard();
+          ac.hostConfig = new AdaptiveCards.HostConfig(TEAMS_HOST_CONFIG);
+          ac.onExecuteAction = (action) => {
+            if (action instanceof AdaptiveCards.OpenUrlAction && action.url) window.open(action.url, "_blank");
+          };
+          ac.parse(content);
+          const rendered = ac.render();
+          if (rendered) el.appendChild(rendered);
+        } catch (e) {
+          el.innerHTML = `<p style="padding:12px;color:#EF4444;font-size:12px">Render error: ${e.message}</p>`;
+        }
+      },
+
+      async loadEvents() {
+        try { const res = await fetch("/api/events"); this.events = await res.json(); } catch (_) {}
+      },
+
+      selectEvent(ev) {
+        this.results    = { original_payload: ev.original_payload, teams_payload: ev.teams_payload, delivered: ev.delivered };
+        this.lastStatus = null;
+        this.activeTab  = "preview";
+        this.$nextTick(() => this.renderCard());
+      },
+
+      async loadConfig() {
+        try {
+          const res  = await fetch("/api/config");
+          const data = await res.json();
+          this.destinations = data.destinations || [];
+        } catch (_) {}
+      },
+
+      async addDestination() {
+        const url = this.newDestUrl.trim();
+        if (!url) return;
+        this.configSaving = true;
+        this.configError  = null;
+        try {
+          const res  = await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: this.newDestName.trim(), url }),
+          });
+          const data = await res.json();
+          if (!res.ok) { this.configError = data.detail || "Add failed"; return; }
+          this.destinations = data.destinations || [];
+          this.newDestName  = "";
+          this.newDestUrl   = "";
+        } catch (e) { this.configError = "Network error: " + e.message; }
+        finally { this.configSaving = false; }
+      },
+
+      async removeDestination(id) {
+        this.configSaving = true;
+        this.configError  = null;
+        try {
+          const res  = await fetch("/api/config/" + encodeURIComponent(id), { method: "DELETE" });
+          const data = await res.json();
+          if (!res.ok) { this.configError = data.detail || "Remove failed"; return; }
+          this.destinations = data.destinations || [];
+        } catch (e) { this.configError = "Network error: " + e.message; }
+        finally { this.configSaving = false; }
+      },
+
+      // ── Event log delivery helpers ──
+      deliveryCounts(ev) {
+        const results = ev.delivery_results || [];
+        const total     = results.length;
+        const delivered = results.filter(r => r.delivered).length;
+        return { total, delivered };
+      },
+      deliveryLabel(ev) {
+        const { total, delivered } = this.deliveryCounts(ev);
+        if (total === 0) return "No destinations";
+        return delivered + "/" + total;
+      },
+      deliveryTint(ev) {
+        const { total, delivered } = this.deliveryCounts(ev);
+        if (total === 0)            return "text-zinc-400";
+        if (delivered === total)    return "text-emerald-600";
+        if (delivered === 0)        return "text-red-500";
+        return "text-amber-600";
+      },
+      deliveryDot(ev) {
+        const { total, delivered } = this.deliveryCounts(ev);
+        if (total === 0)            return "bg-zinc-300";
+        if (delivered === total)    return "bg-emerald-500";
+        if (delivered === 0)        return "bg-red-400";
+        return "bg-amber-400";
+      },
+      deliveryTooltip(ev) {
+        const results = ev.delivery_results || [];
+        if (results.length === 0) return "No destinations configured";
+        return results.map(r => (r.delivered ? "✓" : "✗") + " " + r.name).join("\n");
+      },
+
+      async copyJSON(which) {
+        const obj = which === "original" ? this.results?.original_payload : this.results?.teams_payload;
+        if (!obj) return;
+        try { await navigator.clipboard.writeText(JSON.stringify(obj, null, 2)); this.copied = which; setTimeout(() => { this.copied = null; }, 2000); } catch (_) {}
+      },
+
+      fmtTime(iso) {
+        try { return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+        catch (_) { return iso; }
+      },
+
+      highlightJSON(obj) {
+        if (!obj) return "";
+        const json = JSON.stringify(obj, null, 2);
+        return json.replace(
+          /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+          (m) => {
+            if (/^"/.test(m)) return /:$/.test(m) ? `<span class="j-key">${m}</span>` : `<span class="j-str">${m}</span>`;
+            if (/true|false/.test(m)) return `<span class="j-bool">${m}</span>`;
+            if (/null/.test(m))       return `<span class="j-null">${m}</span>`;
+            return `<span class="j-num">${m}</span>`;
+          }
+        );
+      },
+    };
+  }
+  </script>
+</body>
+</html>
